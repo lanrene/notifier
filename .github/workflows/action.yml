@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
+        id: checkout
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -37,12 +38,13 @@ jobs:
         run: python epic_games_tracker.py
 
       - name: Commit updated order data
+        if: always() && steps.checkout.outcome == 'success'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- epic_orders.json
+          git add -- epic_orders.json notification_state.json
           if git diff --cached --quiet; then
-            echo "epic_orders.json has no changes to commit."
+            echo "No Epic tracker data changes to commit."
           else
             git commit -m "chore: refresh Epic order data"
             git push

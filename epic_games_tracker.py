@@ -8,6 +8,7 @@ from http.cookies import SimpleCookie
 from datetime import datetime, timezone
 from typing import List, Dict, Set, Optional, Tuple
 from pathlib import Path
+from notifications import send_notification
 
 # ====================== 用户配置区 ======================
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -54,6 +55,7 @@ PUSHPLUS_TOKEN = os.environ.get(
     LOCAL_CONFIG.get("PUSHPLUS_TOKEN", ""),
 ).strip()
 ORDER_JSON_PATH = SCRIPT_DIR / "epic_orders.json"
+NOTIFICATION_STATE_PATH = SCRIPT_DIR / "notification_state.json"
 FORCE_ORDER_REFRESH = os.environ.get(
     "EPIC_FORCE_ORDER_REFRESH",
     LOCAL_CONFIG.get("EPIC_FORCE_ORDER_REFRESH", ""),
@@ -314,33 +316,6 @@ def get_epic_free_games() -> Tuple[Optional[List[Dict]], Optional[str]]:
         return None, f"免费游戏接口返回的数据格式无效：{e}"
 
 
-def send_pushplus_notification(title: str, content: str) -> None:
-    """发送 PushPlus 通知；缺少凭据或发送失败时显式报错。"""
-    if not PUSHPLUS_TOKEN:
-        raise RuntimeError("缺少 PUSHPLUS_TOKEN 环境变量，无法发送通知")
-    try:
-        response = requests.post(
-            "https://www.pushplus.plus/send",
-            json={
-                "token": PUSHPLUS_TOKEN,
-                "title": title,
-                "content": content,
-                "template": "markdown",
-            },
-            timeout=20,
-        )
-        response.raise_for_status()
-        result = response.json()
-    except requests.exceptions.RequestException as e:
-        raise RuntimeError(f"PushPlus 请求失败：{e}") from e
-    except ValueError as e:
-        raise RuntimeError(f"PushPlus 返回了无效 JSON：{e}") from e
-    if not isinstance(result, dict) or result.get("code") != 200:
-        if not isinstance(result, dict):
-            raise RuntimeError("PushPlus 返回的数据格式无效")
-        raise RuntimeError(f"PushPlus 发送失败：{result.get('msg', '未知错误')}")
-
-
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -462,11 +437,16 @@ def main() -> int:
         if free_games_error:
             content_lines.append("限免游戏列表不可用，无法确认本次是否还有其他可领取游戏。")
         try:
-            send_pushplus_notification(
+            channel = send_notification(
                 "Epic 限免游戏提醒" if claimable_games and not failures else "Epic 自动任务异常",
                 "\n".join(content_lines),
+                PUSHPLUS_TOKEN,
+                NOTIFICATION_STATE_PATH,
             )
-            print("✅ PushPlus 通知已发送")
+            if channel is None:
+                print("ℹ️ 相同通知已达到发送次数上限，跳过发送")
+            else:
+                print(f"✅ PushPlus 通知已通过 {channel} 渠道提交")
         except RuntimeError as e:
             print(f"❌ {e}")
             failures.append(str(e))
