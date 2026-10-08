@@ -8,54 +8,35 @@ from http.cookies import SimpleCookie
 from datetime import datetime, timezone
 from typing import List, Dict, Set, Optional, Tuple
 from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = SCRIPT_DIR.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+from local_config import load_local_config
 from notifications import send_notification
 
 # ====================== 用户配置区 ======================
-SCRIPT_DIR = Path(__file__).resolve().parent
-LOCAL_CONFIG_PATH = SCRIPT_DIR / ".epic.local.env"
-
-
-def load_local_config() -> Dict[str, str]:
-    """读取本地配置文件；进程环境变量仍具有更高优先级。"""
-    if not LOCAL_CONFIG_PATH.exists():
-        return {}
-
-    config = {}
-    try:
-        with LOCAL_CONFIG_PATH.open("r", encoding="utf-8") as config_file:
-            for line_number, raw_line in enumerate(config_file, start=1):
-                line = raw_line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" not in line:
-                    raise ValueError(
-                        f"{LOCAL_CONFIG_PATH} 第{line_number}行缺少 '='"
-                    )
-                key, value = line.split("=", maxsplit=1)
-                key = key.strip()
-                if key not in {
-                    "EPIC_COOKIE",
-                    "PUSHPLUS_TOKEN",
-                    "EPIC_FORCE_ORDER_REFRESH",
-                }:
-                    continue
-                value = value.strip()
-                if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-                    value = value[1:-1]
-                config[key] = value
-    except OSError as e:
-        raise RuntimeError(f"读取本地配置文件失败：{e}") from e
-    return config
-
-
-LOCAL_CONFIG = load_local_config()
+LOCAL_CONFIG = load_local_config(
+    {
+        "EPIC_COOKIE",
+        "PUSHPLUS_TOKEN",
+        "PUSHPLUS_CHANNEL",
+        "EPIC_FORCE_ORDER_REFRESH",
+    }
+)
 RAW_COOKIE = os.environ.get("EPIC_COOKIE", LOCAL_CONFIG.get("EPIC_COOKIE", "")).strip()
 PUSHPLUS_TOKEN = os.environ.get(
     "PUSHPLUS_TOKEN",
     LOCAL_CONFIG.get("PUSHPLUS_TOKEN", ""),
 ).strip()
+PUSHPLUS_CHANNEL = os.environ.get(
+    "PUSHPLUS_CHANNEL",
+    LOCAL_CONFIG.get("PUSHPLUS_CHANNEL", "custom"),
+).strip() or "custom"
 ORDER_JSON_PATH = SCRIPT_DIR / "epic_orders.json"
-NOTIFICATION_STATE_PATH = SCRIPT_DIR / "notification_state.json"
+NOTIFICATION_STATE_PATH = SCRIPT_DIR / "epic_notification_state.json"
 FORCE_ORDER_REFRESH = os.environ.get(
     "EPIC_FORCE_ORDER_REFRESH",
     LOCAL_CONFIG.get("EPIC_FORCE_ORDER_REFRESH", ""),
@@ -226,9 +207,16 @@ def save_order_json(data: Dict):
             f.flush()
             os.fsync(f.fileno())
         os.replace(temp_path, ORDER_JSON_PATH)
-    finally:
+    except Exception as save_error:
         if temp_path is not None and temp_path.exists():
-            temp_path.unlink()
+            try:
+                temp_path.unlink()
+            except OSError as cleanup_error:
+                raise RuntimeError(
+                    f"保存订单文件失败：{save_error}；"
+                    f"清理临时文件也失败：{cleanup_error}"
+                ) from save_error
+        raise
 
 
 def merge_orders(local_orders: List[Dict], new_page_orders: List[Dict]) -> List[Dict]:
@@ -441,7 +429,9 @@ def main() -> int:
                 "Epic 限免游戏提醒" if claimable_games and not failures else "Epic 自动任务异常",
                 "\n".join(content_lines),
                 PUSHPLUS_TOKEN,
-                NOTIFICATION_STATE_PATH,
+                channel=PUSHPLUS_CHANNEL,
+                state_path=NOTIFICATION_STATE_PATH,
+                template="markdown",
             )
             if channel is None:
                 print("ℹ️ 相同通知已达到发送次数上限，跳过发送")

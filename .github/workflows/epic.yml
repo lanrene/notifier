@@ -35,14 +35,15 @@ jobs:
           EPIC_COOKIE: ${{ secrets.EPIC_COOKIE }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
           EPIC_FORCE_ORDER_REFRESH: ${{ secrets.EPIC_FORCE_ORDER_REFRESH }}
-        run: python epic_games_tracker.py
+          PUSHPLUS_CHANNEL: ${{ vars.PUSHPLUS_CHANNEL }}
+        run: python epic/epic_games_tracker.py
 
       - name: Commit updated order data
         if: always() && steps.checkout.outcome == 'success'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- epic_orders.json notification_state.json
+          git add -- epic/epic_orders.json epic/epic_notification_state.json
           if git diff --cached --quiet; then
             echo "No Epic tracker data changes to commit."
           else

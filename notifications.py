@@ -69,29 +69,23 @@ def _save_notification_state(state_path: Path, notifications: Dict[str, int]) ->
             os.fsync(state_file.fileno())
         os.replace(temp_path, state_path)
     except OSError as e:
-        raise RuntimeError(f"保存通知状态文件失败：{e}") from e
-    finally:
         if temp_path is not None and temp_path.exists():
-            temp_path.unlink()
+            try:
+                temp_path.unlink()
+            except OSError as cleanup_error:
+                raise RuntimeError(
+                    f"保存通知状态文件失败：{e}；清理临时文件也失败：{cleanup_error}"
+                ) from e
+        raise RuntimeError(f"保存通知状态文件失败：{e}") from e
 
 
-def send_notification(
+def _send_pushplus_notification(
     title: str,
     content: str,
     token: str,
-    state_path: Path,
-) -> Optional[str]:
-    """Submit identical notifications via wechat, then cmcc, then suppress them."""
-    if not token:
-        raise RuntimeError("缺少 PUSHPLUS_TOKEN 环境变量，无法发送通知")
-
-    notifications = _load_notification_state(state_path)
-    notification_key = _notification_key(title, content)
-    sent_count = notifications.get(notification_key, 0)
-    if sent_count >= 2:
-        return None
-
-    channel = "wechat" if sent_count == 0 else "cmcc"
+    channel: str,
+    template: str,
+) -> None:
     try:
         response = requests.post(
             PUSHPLUS_URL,
@@ -99,7 +93,7 @@ def send_notification(
                 "token": token,
                 "title": title,
                 "content": content,
-                "template": "markdown",
+                "template": template,
                 "channel": channel,
             },
             timeout=20,
@@ -116,6 +110,38 @@ def send_notification(
             raise RuntimeError("PushPlus 返回的数据格式无效")
         raise RuntimeError(f"PushPlus 发送失败：{result.get('msg', '未知错误')}")
 
+
+def send_notification(
+    title: str,
+    content: str,
+    token: str,
+    channel: str = "custom",
+    state_path: Optional[Path] = None,
+    template: str = "txt",
+) -> Optional[str]:
+    """Send through a PushPlus channel; ``custom`` rotates wechat then cmcc once.
+
+    ``template`` is passed directly to PushPlus and defaults to ``txt``.
+    """
+    if not token:
+        raise RuntimeError("缺少 PUSHPLUS_TOKEN 环境变量，无法发送通知")
+    if not isinstance(channel, str) or not channel.strip():
+        raise ValueError("通知渠道必须是非空字符串")
+    channel = channel.strip()
+    if channel != "custom":
+        _send_pushplus_notification(title, content, token, channel, template)
+        return channel
+
+    if state_path is None:
+        raise ValueError("channel 为 custom 时必须提供通知状态文件路径")
+    notifications = _load_notification_state(state_path)
+    notification_key = _notification_key(title, content)
+    sent_count = notifications.get(notification_key, 0)
+    if sent_count >= 2:
+        return None
+
+    pushplus_channel = ("wechat", "cmcc")[sent_count]
+    _send_pushplus_notification(title, content, token, pushplus_channel, template)
     notifications[notification_key] = sent_count + 1
     _save_notification_state(state_path, notifications)
-    return channel
+    return pushplus_channel
