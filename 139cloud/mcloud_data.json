@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "accounts": {
+    "4c5d4582c8bd94dcaf3b5b099a94fbcd95ca2b13331274a883628ff872d3fb8a": {
+      "deviceId": "BHCv73xgxa1PKu/pMYTHUucpV3Aa77nsspusk48cFA3nccjCfBFxsPpcR3onpnm2qsydjPGj/QuJmcWQvIiIYlQ==",
+      "expiresAt": 1794026745288,
+      "clientDeviceHash": "8B2D4EAD9C510220834C29DF9D2811FD",
+      "clientVersionId": "6f81c5ce7166f879"
+    }
+  }
+}

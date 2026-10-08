@@ -78,7 +78,7 @@ def checkin(cookie: str, account_number: int) -> Tuple[str, bool, Optional[str]]
         cookie,
         {"token": "glados.rocks"},
     )
-    if "code" in checkin_result and checkin_result["code"] != 0:
+    if "code" in checkin_result and checkin_result["code"] not in (0, 1):
         raise RuntimeError(checkin_result.get("message", "签到失败"))
     message = checkin_result.get("message")
     if not isinstance(message, str):

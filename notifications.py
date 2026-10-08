@@ -115,13 +115,14 @@ def send_notification(
     title: str,
     content: str,
     token: str,
-    channel: str = "custom",
+    channel: str = "wechat",
     state_path: Optional[Path] = None,
     template: str = "txt",
 ) -> Optional[str]:
-    """Send through a PushPlus channel; ``custom`` rotates wechat then cmcc once.
+    """通过指定的 PushPlus 渠道发送通知，默认使用微信渠道。
 
-    ``template`` is passed directly to PushPlus and defaults to ``txt``.
+    显式传入 ``custom`` 时会依次轮换 wechat 和 cmcc 渠道一次，因此需要
+    提供 ``state_path``。``template`` 会直接传递给 PushPlus。
     """
     if not token:
         raise RuntimeError("缺少 PUSHPLUS_TOKEN 环境变量，无法发送通知")

@@ -1,3 +1,7 @@
+> [!CAUTION]
+> AI + 缝合项目，极度危险，谨慎使用！！！！
+
+
 | Secret | 说明 |
 | --- | --- |
 | `PUSHPLUS_TOKEN` | PushPlus Token 通知使用 |
@@ -19,3 +23,11 @@
 | --- | --- |
 | `GLADOS_COOKIE` | GLaDOS Cookie；多个账号可用 `&` 分隔 |
 
+### 移动云盘
+
+> forked from [tianjian518/mcloud-ai-bean](https://github.com/tianjian518/mcloud-ai-bean)
+
+| Secret / Variable | 说明 |
+| --- | --- |
+| `MCLOUD_COOKIES` | 必需；移动云盘 Authorization 和手机号，例如 `Basic xxxxxx#13800138000`；多账号用 `&` 分隔 |
+| `MCLOUD_AUTH_ENCRYPTION_KEY` | 必需；加密密钥，可通过 `python -c "import secrets; print(secrets.token_hex(32))"` 生成 |

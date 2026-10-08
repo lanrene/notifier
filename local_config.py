@@ -6,7 +6,7 @@ LOCAL_CONFIG_PATH = Path(__file__).resolve().parent / ".epic.local.env"
 
 
 def load_local_config(allowed_keys: AbstractSet[str]) -> Dict[str, str]:
-    """Load selected key-value settings from the project-local config file."""
+    """从项目本地配置文件中读取指定的键值设置。"""
     if not LOCAL_CONFIG_PATH.exists():
         return {}
 
