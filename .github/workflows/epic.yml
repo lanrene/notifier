@@ -34,7 +34,6 @@ jobs:
           EPIC_COOKIE: ${{ secrets.EPIC_COOKIE }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
           EPIC_FORCE_ORDER_REFRESH: ${{ secrets.EPIC_FORCE_ORDER_REFRESH }}
-          PUSHPLUS_CHANNEL: ${{ vars.PUSHPLUS_CHANNEL }}
         run: python epic/epic_games_tracker.py
 
       - name: Commit updated order data
