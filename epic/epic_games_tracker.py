@@ -22,7 +22,6 @@ LOCAL_CONFIG = load_local_config(
     {
         "EPIC_COOKIE",
         "PUSHPLUS_TOKEN",
-        "PUSHPLUS_CHANNEL",
         "EPIC_FORCE_ORDER_REFRESH",
     }
 )
@@ -31,10 +30,6 @@ PUSHPLUS_TOKEN = os.environ.get(
     "PUSHPLUS_TOKEN",
     LOCAL_CONFIG.get("PUSHPLUS_TOKEN", ""),
 ).strip()
-PUSHPLUS_CHANNEL = os.environ.get(
-    "PUSHPLUS_CHANNEL",
-    LOCAL_CONFIG.get("PUSHPLUS_CHANNEL", "custom"),
-).strip() or "custom"
 ORDER_JSON_PATH = SCRIPT_DIR / "epic_orders.json"
 NOTIFICATION_STATE_PATH = SCRIPT_DIR / "epic_notification_state.json"
 FORCE_ORDER_REFRESH = os.environ.get(
@@ -429,7 +424,7 @@ def main() -> int:
                 "Epic 限免游戏提醒" if claimable_games and not failures else "Epic 自动任务异常",
                 "\n".join(content_lines),
                 PUSHPLUS_TOKEN,
-                channel=PUSHPLUS_CHANNEL,
+                channel="custom",
                 state_path=NOTIFICATION_STATE_PATH,
                 template="markdown",
             )
