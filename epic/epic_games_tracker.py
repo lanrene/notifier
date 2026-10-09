@@ -4,6 +4,7 @@ import os
 import time
 import sys
 import tempfile
+import random
 from http.cookies import SimpleCookie
 from datetime import datetime, timezone
 from typing import List, Dict, Set, Optional, Tuple
@@ -18,25 +19,21 @@ from local_config import load_local_config
 from notifications import send_notification
 
 # ====================== 用户配置区 ======================
-LOCAL_CONFIG = load_local_config(
-    {
-        "EPIC_COOKIE",
-        "PUSHPLUS_TOKEN",
-        "EPIC_FORCE_ORDER_REFRESH",
-    }
-)
-RAW_COOKIE = os.environ.get("EPIC_COOKIE", LOCAL_CONFIG.get("EPIC_COOKIE", "")).strip()
-PUSHPLUS_TOKEN = os.environ.get(
+LOCAL_CONFIG = load_local_config({
+    "EPIC_COOKIE",
     "PUSHPLUS_TOKEN",
-    LOCAL_CONFIG.get("PUSHPLUS_TOKEN", ""),
-).strip()
+    "EPIC_FORCE_ORDER_REFRESH",
+})
+RAW_COOKIE = os.environ.get("EPIC_COOKIE", LOCAL_CONFIG.get("EPIC_COOKIE", "")).strip()
+PUSHPLUS_TOKEN = os.environ.get("PUSHPLUS_TOKEN", LOCAL_CONFIG.get("PUSHPLUS_TOKEN", "")).strip()
+FORCE_ORDER_REFRESH = os.environ.get("EPIC_FORCE_ORDER_REFRESH", LOCAL_CONFIG.get("EPIC_FORCE_ORDER_REFRESH", "")) == "1"
+
 ORDER_JSON_PATH = SCRIPT_DIR / "epic_orders.json"
 NOTIFICATION_STATE_PATH = SCRIPT_DIR / "epic_notification_state.json"
-FORCE_ORDER_REFRESH = os.environ.get(
-    "EPIC_FORCE_ORDER_REFRESH",
-    LOCAL_CONFIG.get("EPIC_FORCE_ORDER_REFRESH", ""),
-) == "1"
-PAGE_DELAY = 1.6  # 全量分页请求延时(秒)
+PAGE_DELAY = 3  # 全量分页请求延时(秒)，1.5-PAGE_DELAY之间随机数
+
+FREE_GAME_HOME_URL = "https://store.epicgames.com/free-games"
+EPIC_ORDER_HISTORY_URL= "https://accounts.epicgames.com/account/v2/payment/ajaxGetOrderHistory"
 # ======================================================
 
 
@@ -45,14 +42,14 @@ class EpicRequestError(Exception):
 
 
 def fetch_one_page(raw_cookie: str, next_page_token: Optional[str] = None) -> Dict:
-    """拉取单页订单，count=10，和浏览器保持一致"""
+    """拉取单页订单"""
     cookie_obj = SimpleCookie()
     cookie_obj.load(raw_cookie)
     xsrf_token = cookie_obj.get("XSRF-AM-TOKEN")
     if not xsrf_token:
         raise EpicRequestError("Cookie 缺少 XSRF-AM-TOKEN")
 
-    base_url = "https://accounts.epicgames.com/account/v2/payment/ajaxGetOrderHistory"
+
     headers = {
         "Cookie": raw_cookie,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
@@ -72,9 +69,9 @@ def fetch_one_page(raw_cookie: str, next_page_token: Optional[str] = None) -> Di
         params["nextPageToken"] = next_page_token
 
     try:
-        resp = requests.get(base_url, params=params, headers=headers, timeout=20)
+        resp = requests.get(EPIC_ORDER_HISTORY_URL, params=params, headers=headers, timeout=20)
         if resp.status_code == 403:
-            raise EpicRequestError("HTTP 403：Epic 拒绝请求，Cookie 或 cf_clearance 可能已失效")
+            raise EpicRequestError(f"HTTP 403：Epic 拒绝请求，Cookie 或 cf_clearance 可能已失效，抓包 {EPIC_ORDER_HISTORY_URL} 更新 Cookie")
         resp.raise_for_status()
         data = resp.json()
         if not isinstance(data, dict) or not isinstance(data.get("orders"), list):
@@ -125,7 +122,7 @@ def fetch_full_all_orders(raw_cookie: str) -> List[Dict]:
         if next_token in seen_tokens:
             raise EpicRequestError("订单分页接口重复返回 nextPageToken，已停止避免无限循环")
         seen_tokens.add(next_token)
-        time.sleep(PAGE_DELAY)
+        time.sleep(random.uniform(1.5, PAGE_DELAY))
     return filter_useful_orders(all_raw)
 
 
@@ -164,7 +161,7 @@ def fetch_incremental_orders(raw_cookie: str, local_orders: List[Dict]) -> List[
         if next_token in seen_tokens:
             raise EpicRequestError("订单分页接口重复返回 nextPageToken，已停止避免无限循环")
         seen_tokens.add(next_token)
-        time.sleep(PAGE_DELAY)
+        time.sleep(random.uniform(1.5, PAGE_DELAY))
 
     return merge_orders(local_orders, new_orders)
 
@@ -287,7 +284,7 @@ def get_epic_free_games() -> Tuple[Optional[List[Dict]], Optional[str]]:
             if page_slug:
                 link = f"https://store.epicgames.com/p/{page_slug}"
             else:
-                link = "https://store.epicgames.com/free-games"
+                link = FREE_GAME_HOME_URL
 
             game_list.append({
                 "name": title,
@@ -335,7 +332,7 @@ def main() -> int:
     orders_available = local_data is not None
     if need_query_order:
         if not RAW_COOKIE:
-            order_error = "缺少 EPIC_COOKIE 环境变量"
+            order_error = "缺少 EPIC_COOKIE 环境变量，抓包 {EPIC_ORDER_HISTORY_URL} 获取"
         else:
             try:
                 if local_data is None or not local_data.get("is_full", False):
@@ -408,11 +405,7 @@ def main() -> int:
         if failures:
             content_lines.extend(f"- {failure}" for failure in failures)
         if claimable_games:
-            section_title = (
-                "### 入库状态未核验的限免游戏"
-                if not orders_available
-                else "### 可领取游戏"
-            )
+            section_title = ("### 本次羊毛福利")
             content_lines.append(section_title)
             for game in claimable_games:
                 ownership_note = "" if orders_available else "（入库状态未核验）"
@@ -421,7 +414,7 @@ def main() -> int:
             content_lines.append("限免游戏列表不可用，无法确认本次是否还有其他可领取游戏。")
         try:
             channel = send_notification(
-                "Epic 限免游戏提醒" if claimable_games and not failures else "Epic 自动任务异常",
+                "Epic 限免游戏提醒" if claimable_games and not failures else "❗ Epic 任务异常",
                 "\n".join(content_lines),
                 PUSHPLUS_TOKEN,
                 channel="custom",
