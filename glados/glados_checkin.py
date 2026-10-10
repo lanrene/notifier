@@ -128,10 +128,7 @@ def checkin(cookie: str, account_number: int) -> Tuple[str, bool, Optional[str]]
 def main() -> int:
     cookies = [
         cookie.strip()
-        for cookie in os.environ.get(
-            "GLADOS_COOKIE",
-            LOCAL_CONFIG.get("GLADOS_COOKIE", ""),
-        ).split("&")
+        for cookie in os.environ.get("GLADOS_COOKIE", LOCAL_CONFIG.get("GLADOS_COOKIE", "")).split("&")
         if cookie.strip()
     ]
     results = []
@@ -149,9 +146,7 @@ def main() -> int:
                 results.append(result)
                 exchange_succeeded = exchange_succeeded or exchanged
                 if follow_up_error:
-                    follow_up_errors.append(
-                        f"账号 {account_number}（签到已完成）：{follow_up_error}"
-                    )
+                    follow_up_errors.append(f"账号 {account_number}（签到已完成）：{follow_up_error}")
             except RuntimeError as e:
                 message = f"账号 {account_number}：{e}"
                 print(f"❌ {message}")
@@ -177,10 +172,7 @@ def main() -> int:
         channel = send_notification(
             title,
             content,
-            os.environ.get(
-                "PUSHPLUS_TOKEN",
-                LOCAL_CONFIG.get("PUSHPLUS_TOKEN", ""),
-            ).strip(),
+            os.environ.get("PUSHPLUS_TOKEN", LOCAL_CONFIG.get("PUSHPLUS_TOKEN", "")).strip(),
             channel=notification_channel,
             template="txt",
         )
