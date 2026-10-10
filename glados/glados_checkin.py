@@ -116,10 +116,10 @@ def checkin(cookie: str, account_number: int) -> Tuple[str, bool, Optional[str]]
         points -= 500
         left_days += 100
         exchanged = True
-        exchange_message = f"；自动兑换成功：{exchange_result.get('message', '')}"
+        exchange_message = f" | 自动兑换成功：{exchange_result.get('message', '')}"
 
     return (
-        f"{nickname}：{message}{exchange_message}；积分 {points}；剩余 {left_days} 天",
+        f"👤 {nickname} | {message}{exchange_message} | 积分：{points} | 剩余 {left_days} 天",
         exchanged,
         None,
     )
