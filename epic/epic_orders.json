@@ -1,7 +1,7 @@
 {
-  "modify_date": "2026-10-09T10:53:51+00:00",
+  "modify_date": "2026-10-10T01:34:18+00:00",
   "is_full": true,
-  "total_games": 470,
+  "total_games": 471,
   "orders": [
     {
       "orderId": "F2610020136291311",
@@ -4680,6 +4680,16 @@
           "description": "The Big Con",
           "offerId": "dec6eafbe23f4ae2896f3ec0d3310816",
           "namespace": "6fe6ca3e7dae48ac80f9b5cd7b8947e5"
+        }
+      ]
+    },
+    {
+      "orderId": "F2610091055318446",
+      "items": [
+        {
+          "description": "虎视眈眈 (Out of Sight)",
+          "offerId": "cb733f3432db46bca94965b422c33ede",
+          "namespace": "436099305a2249a8bbe4d9113fc41d53"
         }
       ]
     }
