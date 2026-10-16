@@ -37,7 +37,7 @@ jobs:
         env:
           EPIC_COOKIE: ${{ secrets.EPIC_COOKIE }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-          EPIC_FORCE_ORDER_REFRESH: ${{ secrets.EPIC_FORCE_ORDER_REFRESH }}
+          EPIC_FORCE_ORDER_REFRESH: "1"
         run: python epic/epic_games_tracker.py
 
       - name: Upload output artifacts
