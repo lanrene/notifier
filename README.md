@@ -20,7 +20,7 @@
 
 | Secret | 说明 |
 | --- | --- |
-| `EPIC_COOKIE` | 【非必须】Epic 账户 Cookie，需包含 `XSRF-AM-TOKEN` |
+| `EPIC_COOKIE` | 【非必须】Epic 账户 Cookie |
 | `EPIC_FORCE_ORDER_REFRESH` | 【非必须】强制更新 JSON |
 
 ### GLaDOS
