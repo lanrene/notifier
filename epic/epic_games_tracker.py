@@ -29,7 +29,7 @@ FORCE_ORDER_REFRESH = os.environ.get("EPIC_FORCE_ORDER_REFRESH", LOCAL_CONFIG.ge
 
 ORDER_JSON_PATH = SCRIPT_DIR / "epic_orders.json"
 NOTIFICATION_STATE_PATH = SCRIPT_DIR / "epic_notification_state.json"
-PAGE_DELAY = 3  # 全量分页请求延时(秒)，1.5-PAGE_DELAY之间随机数
+PAGE_DELAY = 10  # 全量分页请求延时(秒)，3-PAGE_DELAY之间随机数
 
 FREE_GAME_HOME_URL = "https://store.epicgames.com/free-games"
 EPIC_ORDER_HISTORY_URL= "https://accounts.epicgames.com/account/v2/payment/ajaxGetOrderHistory"
@@ -42,10 +42,6 @@ class EpicRequestError(Exception):
 
 def fetch_one_page(raw_cookie: str, next_page_token: Optional[str] = None) -> Dict:
     """拉取单页订单"""
-    if not raw_cookie:
-        raise EpicRequestError("缺少 Cookie")
-
-
     headers = {
         "Host": "accounts.epicgames.com",
         "Connection": "keep-alive",
@@ -110,71 +106,52 @@ def filter_useful_orders(raw_orders: List[Dict]) -> List[Dict]:
         })
     return out
 
-
-def fetch_full_all_orders(raw_cookie: str) -> List[Dict]:
-    """全量拉取全部订单，每页延时"""
-    print("🔍 需要全量拉取账号全部订单，请稍候...")
-    all_raw = []
-    next_token = None
-    seen_tokens: Set[str] = set()
-    page_idx = 0
-    while True:
-        page_idx += 1
-        resp_data = fetch_one_page(raw_cookie, next_token)
-        page_orders = resp_data.get("orders", [])
-        if not page_orders:
-            break
-        all_raw.extend(page_orders)
-        print(f"    第{page_idx}页 获取 {len(page_orders)} 条订单")
-        next_token = resp_data.get("nextPageToken")
-        if not next_token:
-            break
-        if next_token in seen_tokens:
-            raise EpicRequestError("订单分页接口重复返回 nextPageToken，已停止避免无限循环")
-        seen_tokens.add(next_token)
-        time.sleep(random.uniform(1.5, PAGE_DELAY))
-    return filter_useful_orders(all_raw)
-
-
-def fetch_incremental_orders(raw_cookie: str, local_orders: List[Dict]) -> List[Dict]:
-    """拉取最新订单，遇到本地已知订单时停止翻页。"""
-    known_ids = {
-        order.get("orderId")
-        for order in local_orders
-        if order.get("orderId")
-    }
+def fetch_orders(raw_cookie: str, local_orders: List[Dict]) -> List[Dict]:
+    """拉取订单"""
     new_orders = []
     next_token = None
     seen_tokens: Set[str] = set()
     page_idx = 0
 
+    # 获取本地最新订单ID
+    local_latest_oid = None
+    if len(local_orders) > 0:
+        local_latest_oid = local_orders[0].get("orderId")
+        print(f"📌 本地最新订单ID：{local_latest_oid}")
+
     while True:
         page_idx += 1
-        response = fetch_one_page(raw_cookie, next_token)
-        page_orders = filter_useful_orders(response["orders"])
-        found_known_order = False
-        for order in page_orders:
-            order_id = order.get("orderId")
-            if order_id and order_id in known_ids:
-                found_known_order = True
-            elif order_id:
-                new_orders.append(order)
-                known_ids.add(order_id)
+        resp = fetch_one_page(raw_cookie, next_token)
+        page_orders = filter_useful_orders(resp["orders"])
+        print(f"    第 {page_idx} 页，本页拿到 {len(page_orders)} 条订单")
 
-        print(f"    增量第{page_idx}页 获取 {len(page_orders)} 条订单")
-        if found_known_order:
+        hit_latest = False
+        for order in page_orders:
+            oid = order.get("orderId")
+            # 命中本地最新订单，标记停止
+            if local_latest_oid and oid == local_latest_oid:
+                hit_latest = True
+                break
+            new_orders.append(order)
+
+        # 命中本地最新订单 → 退出翻页循环
+        if hit_latest:
+            print(f"✅ 在第 {page_idx} 页命中本地最新订单，停止继续拉取")
             break
 
-        next_token = response.get("nextPageToken")
+        next_token = resp.get("nextPageToken")
         if not next_token:
+            print("✅ 接口没有nextPageToken，已经拉取到全部末尾")
             break
         if next_token in seen_tokens:
-            raise EpicRequestError("订单分页接口重复返回 nextPageToken，已停止避免无限循环")
+            raise EpicRequestError("分页token重复，防止死循环，终止任务")
         seen_tokens.add(next_token)
-        time.sleep(random.uniform(1.5, PAGE_DELAY))
+        time.sleep(random.uniform(3, PAGE_DELAY))
 
-    return merge_orders(local_orders, new_orders)
-
+    # 新拉到的订单 + 原有本地订单合并
+    merged = merge_orders(local_orders, new_orders)
+    print(f"📋 本次抓取新增 {len(new_orders)} 条订单，合并后总 {len(merged)} 条")
+    return merged
 
 def load_local_order_file() -> Optional[Dict]:
     """读取本地订单json"""
@@ -184,6 +161,7 @@ def load_local_order_file() -> Optional[Dict]:
         with open(ORDER_JSON_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict) or not isinstance(data.get("orders"), list):
+            print(f"⚠️ 读取本地订单文件异常 {ORDER_JSON_PATH}: {e}")
             raise ValueError("JSON 必须包含 orders 数组")
         return data
     except (OSError, json.JSONDecodeError, ValueError) as e:
@@ -220,22 +198,49 @@ def save_order_json(data: Dict):
                 ) from save_error
         raise
 
+def _extract_order_sort_key(order: Dict) -> int:
+    """
+    orderId示例 "F2610091055318446"
+    F后面数字越大代表订单越新；解析失败返回0，排到列表末尾
+    """
+    oid = order.get("orderId", "")
+    if not isinstance(oid, str):
+        return 0
+    if not oid.startswith("F"):
+        return 0
+    num_part = oid[1:]
+    if not num_part.isdigit():
+        print(f"⚠️ 异常orderId格式: {oid}，无法解析排序权重")
+        return 0
+    try:
+        return int(num_part)
+    except ValueError:
+        print(f"⚠️ orderId数字解析失败: {oid}")
+        return 0
+
 
 def merge_orders(local_orders: List[Dict], new_page_orders: List[Dict]) -> List[Dict]:
-    """按orderId去重合并订单"""
-    exist_ids: Set[str] = {
-        order.get("orderId")
-        for order in local_orders
-        if order.get("orderId")
-    }
-    merged = local_orders.copy()
-    for item in new_page_orders:
-        oid = item.get("orderId")
-        if oid and oid not in exist_ids:
-            merged.append(item)
-            exist_ids.add(oid)
-    return merged
+    """订单合并"""
+    exist_ids: Set[str] = set()
+    combined: List[Dict] = []
 
+    for o in (*new_page_orders, *local_orders):
+        oid = o.get("orderId")
+        if not oid:
+            continue
+        if oid in exist_ids:
+            continue
+        exist_ids.add(oid)
+        combined.append(o)
+
+    combined.sort(key=_extract_order_sort_key, reverse=True)
+
+    if combined:
+        print(f"📊 merge完成，排序后最新orderId={combined[0].get('orderId')}，总条数={len(combined)}")
+    else:
+        print("📊 merge完成，合并后订单为空")
+
+    return combined
 
 def build_owned_set(order_list: List[Dict]) -> Set[str]:
     """构造已拥有游戏集合 namespace:offerId"""
@@ -324,13 +329,14 @@ def main() -> int:
 
     local_data = load_local_order_file()
     owned_set: Set[str] = set()
+    local_orders = []
     if local_data is not None:
+        local_orders = local_data.get("orders", [])
         owned_set = build_owned_set(local_data["orders"])
 
     need_query_order = (
         FORCE_ORDER_REFRESH
         or local_data is None
-        or not local_data.get("is_full", False)
     )
     if not need_query_order and free_games:
         need_query_order = any(game["key"] not in owned_set for game in free_games)
@@ -341,33 +347,22 @@ def main() -> int:
 
     orders_available = local_data is not None
     if need_query_order:
+        order_error = None
         if not RAW_COOKIE:
-            order_error = "缺少 EPIC_COOKIE 环境变量，抓包 {EPIC_ORDER_HISTORY_URL} 获取"
+            order_error = f"缺少 EPIC_COOKIE 环境变量，抓包 {EPIC_ORDER_HISTORY_URL} 获取"
         else:
             try:
-                if local_data is None or not local_data.get("is_full", False):
-                    print("🔍 全量拉取账号订单")
-                    updated_orders = fetch_full_all_orders(RAW_COOKIE)
-                    is_full = True
-                else:
-                    print("🔍 分页拉取本地最新订单之后的新增订单")
-                    updated_orders = fetch_incremental_orders(
-                        RAW_COOKIE,
-                        local_data["orders"],
-                    )
-                    is_full = local_data.get("is_full", False)
-
+                print("🔍 拉取订单...")
+                updated_orders = fetch_orders(RAW_COOKIE, local_orders)
                 updated_owned_set = build_owned_set(updated_orders)
                 updated_data = {
                     "modify_date": local_data.get("modify_date") if local_data else None,
-                    "is_full": is_full,
                     "total_games": len(updated_owned_set),
                     "orders": updated_orders,
                 }
                 changed = (
                     local_data is None
-                    or updated_orders != local_data["orders"]
-                    or updated_data["is_full"] != local_data.get("is_full")
+                    or updated_orders != local_data.get("orders", [])
                     or updated_data["total_games"] != local_data.get("total_games")
                 )
                 if changed:
