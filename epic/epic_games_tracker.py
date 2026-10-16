@@ -5,7 +5,6 @@ import time
 import sys
 import tempfile
 import random
-from http.cookies import SimpleCookie
 from datetime import datetime, timezone
 from typing import List, Dict, Set, Optional, Tuple
 from pathlib import Path
@@ -43,21 +42,28 @@ class EpicRequestError(Exception):
 
 def fetch_one_page(raw_cookie: str, next_page_token: Optional[str] = None) -> Dict:
     """拉取单页订单"""
-    cookie_obj = SimpleCookie()
-    cookie_obj.load(raw_cookie)
-    xsrf_token = cookie_obj.get("XSRF-AM-TOKEN")
-    if not xsrf_token:
-        raise EpicRequestError("Cookie 缺少 XSRF-AM-TOKEN")
+    if not raw_cookie:
+        raise EpicRequestError("缺少 Cookie")
 
 
     headers = {
-        "Cookie": raw_cookie,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
-        "x-xsrf-token": xsrf_token.value,
-        "x-requested-with": "XMLHttpRequest",
-        "accept": "application/json, text/plain, */*",
-        "referer": "https://accounts.epicgames.com/",
-        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
+        "Host": "accounts.epicgames.com",
+        "Connection": "keep-alive",
+        "sec-ch-ua": '"Not=A?Brand";v="99", "Android WebView";v="151", "Chromium";v="151"',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent": "Mozilla/5.0 (Linux; Android 16; 23127PN0CC Build/BP2A.250605.031.A3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.7922.199 Mobile Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "dnt": "1",
+        "X-Requested-With": "mark.via",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-User": "?1",
+        "Sec-Fetch-Dest": "document",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cookie": raw_cookie
     }
     params = {
         "count": "10",
