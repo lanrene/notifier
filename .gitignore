@@ -4,3 +4,4 @@ __pycache__/
 *.py[cod]
 epic/epic_orders.json
 epic/epic_notification_state.json
+139cloud/mcloud_data.json
