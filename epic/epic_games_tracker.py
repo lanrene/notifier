@@ -93,6 +93,10 @@ def filter_useful_orders(raw_orders: List[Dict]) -> List[Dict]:
     """只保留订单必要字段"""
     out = []
     for o in raw_orders:
+        # 过滤掉 Android 平台的订单
+        merchant_group = o.get("merchantGroup")
+        if merchant_group == "EGS_MKT_ANDROID":
+            continue
         items_slim = []
         for it in o.get("items", []):
             items_slim.append({
