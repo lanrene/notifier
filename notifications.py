@@ -21,30 +21,29 @@ def _notification_key(title: str, content: str) -> str:
 
 
 def _load_notification_state(state_path: Path) -> Dict[str, int]:
-    try:
-        with state_path.open("r", encoding="utf-8") as state_file:
-            state = json.load(state_file)
-    except (OSError, json.JSONDecodeError) as e:
-        raise RuntimeError(f"读取通知状态文件失败：{e}") from e
-
-    if (
-        not isinstance(state, dict)
-        or state.get("version") != 1
-        or not isinstance(state.get("notifications"), dict)
-    ):
-        raise RuntimeError("通知状态文件格式无效")
-
-    notifications = state["notifications"]
-    if any(
-        not isinstance(key, str)
-        or not isinstance(count, int)
-        or isinstance(count, bool)
-        or count < 0
-        for key, count in notifications.items()
-    ):
-        raise RuntimeError("通知状态文件包含无效的通知记录")
-    return notifications
-
+     if not state_path.exists() or state_path.stat().st_size == 0:
+         return {}
+     try:
+         with state_path.open("r", encoding="utf-8") as state_file:
+             state = json.load(state_file)
+     except (OSError, json.JSONDecodeError):
+         return {}
+     if (
+         not isinstance(state, dict)
+         or state.get("version") != 1
+         or not isinstance(state.get("notifications"), dict)
+     ):
+         return {}
+     notifications = state["notifications"]
+     if any(
+         not isinstance(key, str)
+         or not isinstance(count, int)
+         or isinstance(count, bool)
+         or count < 0
+         for key, count in notifications.items()
+     ):
+         return {}
+     return notifications
 
 def _save_notification_state(state_path: Path, notifications: Dict[str, int]) -> None:
     state_path.parent.mkdir(parents=True, exist_ok=True)
