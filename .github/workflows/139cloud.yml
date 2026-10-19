@@ -39,9 +39,9 @@ jobs:
           MCLD_DATA_DIR: 139cloud
         run: python 139cloud/mcloud_checkin.py
 
-      - name: Upload output artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: 139cloud-run-output
-          path: 139cloud/mcloud_data.json
+#      - name: Upload output artifacts
+#        if: always()
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: 139cloud-run-output
+#          path: 139cloud/mcloud_data.json
