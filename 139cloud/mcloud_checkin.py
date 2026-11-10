@@ -54,7 +54,8 @@ STATE_PATH = DATA_DIR / "mcloud_data.json"
 AI_CAMERA_IMAGE_DIR = Path(__file__).resolve().parent / "pic"
 
 MARKET_BASE_URL = "https://m.mcloud.139.com"
-JWT_URL = "https://caiyun.feixin.10086.cn:7071/portal/auth/tyrzLogin.action"
+TIMESTAMP_URL = "https://m.mcloud.139.com/ycloud/api/timestamp"
+JWT_URL = "https://m.mcloud.139.com/ycloud/auth-service/auth/tyrzLogin"
 SPEC_TOKEN_URL = "https://orches.yun.139.com/orchestration/auth-rebuild/token/v1.0/querySpecToken"
 REFRESH_TOKEN_URL = "https://user-njs.yun.139.com/user/auth/refreshToken"
 DEVICE_PROFILE_URL = "https://slw.h5cmpassport.com:9090/deviceprofile/v4"
@@ -613,28 +614,52 @@ class MCloudCheckin:
         ):
             raise RuntimeError(f"获取登录令牌失败：{spec_result.get('message', '未知错误')}")
         return spec_data["token"]
+        
+    def _get_server_timestamp(self) -> int:
+        try:
+            resp = self._request_json(TIMESTAMP_URL, method="GET")
+            ts = resp.get("result")
+            if isinstance(ts, int):
+                return ts
+        except Exception:
+            pass
+        return int(time.time() * 1000)
 
     def _login(self) -> str:
         sso_token = self._query_spec_token("001005")
         self.sso_token = sso_token
-        jwt_result = self._request_json(
+        request_id = str(uuid.uuid4())
+        nonce = str(uuid.uuid4())
+        timestamp = self._get_server_timestamp()
+        SIGN_KEY = "sekaMdYYLIZfbCfm"
+        sign_str = f"{SIGN_KEY}{request_id}{timestamp}{nonce}{SIGN_KEY}"
+        signature = hashlib.md5(sign_str.encode("utf-8")).hexdigest()
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/json;charset=UTF-8",
+            "x-request-id": request_id,
+            "x-timestamp": str(timestamp),
+            "x-nonce": nonce,
+            "x-signature": signature,
+        }
+        body = {
+            "token": sso_token,
+            "openAccount": 0,
+            "marketName": "sign_in_3",
+            "sourceId": "1097"
+        }
+        jwt_resp = self.session.request(
+            "POST",
             JWT_URL,
-            method="POST",
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept": "*/*",
-                "Host": "caiyun.feixin.10086.cn:7071",
-            },
-            params={"ssoToken": sso_token},
+            headers=headers,
+            json=body,
         )
-        jwt_data = jwt_result.get("result")
-        if (
-            jwt_result.get("code") != 0
-            or not isinstance(jwt_data, dict)
-            or not jwt_data.get("token")
-        ):
-            raise RuntimeError(f"移动云盘登录失败：{jwt_result.get('msg', '未知错误')}")
-        return jwt_data["token"]
+        jwt_resp.raise_for_status()
+        cookies = jwt_resp.cookies
+        jwt_token = cookies.get("jwtToken")
+        if not jwt_token:
+            raise RuntimeError(f"移动云盘登录失败：响应未返回jwtToken，响应内容：{resp.text}")
+        return jwt_token
 
     @staticmethod
     def _today_signed(result: Dict[str, Any]) -> Optional[bool]:
