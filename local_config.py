@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import AbstractSet, Dict
 
 
-LOCAL_CONFIG_PATH = Path(__file__).resolve().parent / ".epic.local.env"
+LOCAL_CONFIG_PATH = Path(__file__).resolve().parent / ".local.env"
 
 
 def load_local_config(allowed_keys: AbstractSet[str]) -> Dict[str, str]:
