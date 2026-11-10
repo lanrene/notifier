@@ -2,7 +2,7 @@ name: 移动云盘每日签到
 
 on:
   schedule:
-    - cron: "6 2 * * *"
+    - cron: "6 16 * * *"
   workflow_dispatch:
 
 concurrency:
